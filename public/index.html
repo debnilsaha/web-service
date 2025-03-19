@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>File Server</title>
+    <title>Cloud File Server</title>
     <style>
         body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
         input, button { margin: 10px; padding: 10px; }
@@ -11,7 +11,7 @@
     </style>
 </head>
 <body>
-    <h2>📂 File Server</h2>
+    <h2>📂 Cloud File Server</h2>
 
     <!-- Upload Form -->
     <input type="file" id="fileInput">
@@ -57,10 +57,10 @@
                 data.files.forEach(file => {
                     const listItem = document.createElement("li");
 
-                    // Create a download link
+                    // Create a link to open/download file
                     const link = document.createElement("a");
-                    link.href = `/download/${file}`;
-                    link.textContent = file;
+                    link.href = file.url;
+                    link.textContent = file.name;
                     link.target = "_blank";
 
                     listItem.appendChild(link);

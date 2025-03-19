@@ -1,65 +1,63 @@
+require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("cloudinary").v2;
 const cors = require("cors");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public")); // Serve frontend files
-app.use(express.static("uploads")); // Serve uploaded files
 
-// Ensure the uploads directory exists
-const uploadDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir);
-}
+// ✅ Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-// Configure Multer for file storage
-const storage = multer.diskStorage({
-    destination: uploadDir,
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + path.extname(file.originalname));
-    }
+// ✅ Configure Multer Storage for Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "file-server",
+    format: async (req, file) => file.mimetype.split("/")[1], // Preserve file format
+    public_id: (req, file) => Date.now() + "-" + file.originalname,
+  },
 });
 
 const upload = multer({ storage });
 
 // ✅ Serve the Web UI
 app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.sendFile(__dirname + "/public/index.html");
 });
 
 // ✅ Upload File API
 app.post("/upload", upload.single("file"), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-    res.json({ message: "File uploaded successfully", file: req.file.filename });
+  res.json({ message: "File uploaded successfully", url: req.file.path });
 });
 
 // ✅ List Files API
-app.get("/files", (req, res) => {
-    fs.readdir(uploadDir, (err, files) => {
-        if (err) return res.status(500).json({ error: "Unable to list files" });
-
-        res.json({ files });
-    });
+app.get("/files", async (req, res) => {
+  try {
+    const resources = await cloudinary.api.resources({ type: "upload", prefix: "file-server/" });
+    const files = resources.resources.map(file => ({
+      url: file.secure_url,
+      name: file.public_id.split("/").pop(), // Extract filename
+    }));
+    res.json({ files });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to retrieve files" });
+  }
 });
 
-// ✅ Download File API
-app.get("/download/:filename", (req, res) => {
-    const filePath = path.join(uploadDir, req.params.filename);
-    if (fs.existsSync(filePath)) {
-        res.download(filePath);
-    } else {
-        res.status(404).json({ error: "File not found" });
-    }
-});
-
-// Start Server
+// ✅ Start Server
 app.listen(PORT, () => {
-    console.log(`File Server running at http://localhost:${PORT}`);
+  console.log(`File Server running at http://localhost:${PORT}`);
 });
