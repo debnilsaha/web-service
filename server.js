@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static("public")); // Serve frontend files
 app.use(express.static("uploads")); // Serve uploaded files
 
 // Ensure the uploads directory exists
@@ -27,19 +28,19 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// ✅ Default Home Route (Fixes "Cannot GET /" error)
+// ✅ Serve the Web UI
 app.get("/", (req, res) => {
-    res.send("Welcome to the File Server! Use /upload, /files, or /download/:filename");
+    res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// Upload File API
+// ✅ Upload File API
 app.post("/upload", upload.single("file"), (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     res.json({ message: "File uploaded successfully", file: req.file.filename });
 });
 
-// List Files API
+// ✅ List Files API
 app.get("/files", (req, res) => {
     fs.readdir(uploadDir, (err, files) => {
         if (err) return res.status(500).json({ error: "Unable to list files" });
@@ -48,7 +49,7 @@ app.get("/files", (req, res) => {
     });
 });
 
-// Download File API
+// ✅ Download File API
 app.get("/download/:filename", (req, res) => {
     const filePath = path.join(uploadDir, req.params.filename);
     if (fs.existsSync(filePath)) {

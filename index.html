@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Server</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        input, button { margin: 10px; padding: 10px; }
+        #fileList { margin-top: 20px; text-align: left; display: inline-block; }
+    </style>
+</head>
+<body>
+    <h2>📂 File Server</h2>
+
+    <!-- Upload Form -->
+    <input type="file" id="fileInput">
+    <button onclick="uploadFile()">Upload File</button>
+
+    <!-- File List -->
+    <h3>Uploaded Files:</h3>
+    <ul id="fileList"></ul>
+
+    <script>
+        // Function to upload file
+        function uploadFile() {
+            const fileInput = document.getElementById("fileInput");
+            if (!fileInput.files.length) {
+                alert("Please select a file.");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+
+            fetch("/upload", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                fileInput.value = ""; // Clear input
+                loadFiles(); // Refresh file list
+            })
+            .catch(error => console.error("Error:", error));
+        }
+
+        // Function to load files
+        function loadFiles() {
+            fetch("/files")
+            .then(response => response.json())
+            .then(data => {
+                const fileList = document.getElementById("fileList");
+                fileList.innerHTML = "";
+
+                data.files.forEach(file => {
+                    const listItem = document.createElement("li");
+
+                    // Create a download link
+                    const link = document.createElement("a");
+                    link.href = `/download/${file}`;
+                    link.textContent = file;
+                    link.target = "_blank";
+
+                    listItem.appendChild(link);
+                    fileList.appendChild(listItem);
+                });
+            })
+            .catch(error => console.error("Error:", error));
+        }
+
+        // Load files when the page loads
+        loadFiles();
+    </script>
+</body>
+</html>
