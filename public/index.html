@@ -13,16 +13,13 @@
 <body>
     <h2>📂 Cloud File Server</h2>
 
-    <!-- Upload Form -->
     <input type="file" id="fileInput">
     <button onclick="uploadFile()">Upload File</button>
 
-    <!-- File List -->
     <h3>Uploaded Files:</h3>
     <ul id="fileList"></ul>
 
     <script>
-        // Function to upload file
         function uploadFile() {
             const fileInput = document.getElementById("fileInput");
             if (!fileInput.files.length) {
@@ -40,13 +37,12 @@
             .then(response => response.json())
             .then(data => {
                 alert(data.message);
-                fileInput.value = ""; // Clear input
-                loadFiles(); // Refresh file list
+                fileInput.value = ""; 
+                loadFiles(); 
             })
             .catch(error => console.error("Error:", error));
         }
 
-        // Function to load files
         function loadFiles() {
             fetch("/files")
             .then(response => response.json())
@@ -57,7 +53,6 @@
                 data.files.forEach(file => {
                     const listItem = document.createElement("li");
 
-                    // Create a link to open/download file
                     const link = document.createElement("a");
                     link.href = file.url;
                     link.textContent = file.name;
@@ -70,7 +65,6 @@
             .catch(error => console.error("Error:", error));
         }
 
-        // Load files when the page loads
         loadFiles();
     </script>
 </body>
