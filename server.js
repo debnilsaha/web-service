@@ -27,6 +27,11 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+// ✅ Default Home Route (Fixes "Cannot GET /" error)
+app.get("/", (req, res) => {
+    res.send("Welcome to the File Server! Use /upload, /files, or /download/:filename");
+});
+
 // Upload File API
 app.post("/upload", upload.single("file"), (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
