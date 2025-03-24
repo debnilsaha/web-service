@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -5,126 +6,92 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const OAuth2Server = require('oauth2-server');
-const Request = OAuth2Server.Request;
-const Response = OAuth2Server.Response;
-const soap = require('soap');
+const bodyParser = require('body-parser');
+const authModel = require('./authModel'); // Ensure authModel.js exists
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Enable CORS (Restrict to frontend domain)
-app.use(cors({
-  origin: ['https://your-frontend-domain.com'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-// Apply security headers
+// 🛑 Security Headers & CORS
 app.use(helmet());
+app.use(cors({ origin: '*' })); // Allow all origins (Modify for production)
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// Custom security headers
-app.use((req, res, next) => {
-  res.setHeader('Content-Security-Policy', "default-src 'self'");
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  next();
-});
-
-// OAuth 2.0 Authentication Setup
+// 🛑 OAuth2 Authentication Setup
 const oauth = new OAuth2Server({
-  model: require('./authModel'),
+  model: authModel,
   grants: ['password'],
   accessTokenLifetime: 3600
 });
 
-// Token generation endpoint
-app.post('/auth/token', express.json(), (req, res) => {
-  const request = new Request(req);
-  const response = new Response(res);
-  
-  oauth.token(request, response)
-    .then(token => res.json(token))
-    .catch(err => res.status(500).json(err));
-});
-
-// Middleware for authentication
-const authenticate = (req, res, next) => {
-  const request = new Request(req);
-  const response = new Response(res);
-
-  oauth.authenticate(request, response)
-    .then((token) => {
-      req.user = token.user; // Attach user to request
-      next();
-    })
-    .catch(err => res.status(401).json(err));
-};
-
-// Role-Based Access Control (RBAC)
-const checkRole = (role) => (req, res, next) => {
-  if (!req.user || req.user.role !== role) {
-    return res.status(403).json({ message: 'Forbidden' });
+// 🔐 Authentication Middleware
+const authenticateRequest = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token || !authModel.getAccessToken(token, (err, data) => !data)) {
+    return res.status(401).json({ error: 'Unauthorized access' });
   }
+  req.user = authModel.getAccessToken(token, (err, data) => data.user);
   next();
 };
 
-// File Upload Setup (Allow only certain extensions)
-const allowedExtensions = ['.png', '.jpg', '.pdf', '.txt'];
+// 📂 Multer Configuration for File Upload
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    const uploadDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (!allowedExtensions.includes(ext)) {
-      return cb(new Error('File type not allowed'), false);
-    }
-    cb(null, file.fieldname + '-' + Date.now() + ext);
+    cb(null, Date.now() + '-' + file.originalname);
   }
 });
-
 const upload = multer({ storage });
 
-// File Upload Route (Only Admins can upload)
-app.post('/upload', authenticate, checkRole('admin'), upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-  res.json({ message: 'File uploaded successfully', filename: req.file.filename });
+// 📤 Upload File (Admin Only)
+app.post('/upload', authenticateRequest, upload.single('file'), (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Access denied' });
+  res.json({ message: 'File uploaded successfully', fileName: req.file.filename });
 });
 
-// List Files Route (Accessible to all authenticated users)
-app.get('/files', authenticate, (req, res) => {
-  fs.readdir('uploads/', (err, files) => {
-    if (err) return res.status(500).json({ error: 'Error reading files' });
+// 📂 List Files
+app.get('/files', authenticateRequest, (req, res) => {
+  const directoryPath = path.join(__dirname, 'uploads');
+  fs.readdir(directoryPath, (err, files) => {
+    if (err) return res.status(500).json({ error: 'Error listing files' });
     res.json({ files });
   });
 });
 
-// File Download Route (Accessible to all authenticated users)
-app.get('/files/:filename', authenticate, (req, res) => {
+// 📥 Download File
+app.get('/download/:filename', authenticateRequest, (req, res) => {
   const filePath = path.join(__dirname, 'uploads', req.params.filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
-  res.download(filePath);
-});
-
-// Secure SOAP Service Setup
-const soapService = {
-  FileService: {
-    FilePort: {
-      UploadFile: (args, callback) => {
-        if (args.authToken !== 'secure-token') {
-          return callback({ error: 'Unauthorized' });
-        }
-        callback(null, { message: 'File uploaded securely' });
-      }
-    }
+  if (fs.existsSync(filePath)) {
+    res.download(filePath);
+  } else {
+    res.status(404).json({ error: 'File not found' });
   }
-};
-
-const wsdlXml = fs.readFileSync('fileService.wsdl', 'utf8');
-app.use('/wsdl', (req, res) => res.send(wsdlXml));
-soap.listen(app, '/soap', soapService, wsdlXml);
-
-// Start Server
-app.listen(PORT, () => {
-  console.log(`File Server running at http://localhost:${PORT}`);
 });
+
+// 🌍 Open File in Browser
+app.get('/open/:filename', authenticateRequest, (req, res) => {
+  const filePath = path.join(__dirname, 'uploads', req.params.filename);
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).json({ error: 'File not found' });
+  }
+});
+
+// 🔑 OAuth 2.0 Token Generation
+app.post('/auth/token', (req, res) => {
+  req.body.grant_type = 'password';
+  oauth.token(req, res).then((token) => {
+    res.json(token);
+  }).catch((err) => {
+    res.status(400).json({ error: err.message });
+  });
+});
+
+// 🚀 Start Server
+app.listen(PORT, () => console.log(`✅ File Server running at http://localhost:${PORT}`));
