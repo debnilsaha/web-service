@@ -3,8 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('cloudinary').v2;
 const OAuth2Server = require('oauth2-server');
 const bodyParser = require('body-parser');
 const authModel = require('./authModel'); // Ensure authModel.js exists
@@ -14,11 +14,28 @@ const PORT = process.env.PORT || 10000;
 
 // 🛑 Security Headers & CORS
 app.use(helmet());
-app.use(cors({ origin: '*' })); // Allow all origins (Modify for production)
+app.use(cors({ origin: '*' }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// 🛑 OAuth2 Authentication Setup
+// 🛑 Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// 📂 Multer Storage Setup for Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'file-server', // Folder in Cloudinary
+    resource_type: 'auto' // Supports all file types
+  }
+});
+const upload = multer({ storage });
+
+// 🔑 OAuth2 Authentication Setup
 const oauth = new OAuth2Server({
   model: authModel,
   grants: ['password'],
@@ -35,50 +52,45 @@ const authenticateRequest = (req, res, next) => {
   next();
 };
 
-// 📂 Multer Configuration for File Upload
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, 'uploads');
-    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname);
-  }
-});
-const upload = multer({ storage });
-
-// 📤 Upload File (Admin Only)
+// 📤 Upload File to Cloudinary (Admin Only)
 app.post('/upload', authenticateRequest, upload.single('file'), (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Access denied' });
-  res.json({ message: 'File uploaded successfully', fileName: req.file.filename });
-});
-
-// 📂 List Files
-app.get('/files', authenticateRequest, (req, res) => {
-  const directoryPath = path.join(__dirname, 'uploads');
-  fs.readdir(directoryPath, (err, files) => {
-    if (err) return res.status(500).json({ error: 'Error listing files' });
-    res.json({ files });
+  res.json({
+    message: 'File uploaded successfully',
+    fileUrl: req.file.path
   });
 });
 
-// 📥 Download File
-app.get('/download/:filename', authenticateRequest, (req, res) => {
-  const filePath = path.join(__dirname, 'uploads', req.params.filename);
-  if (fs.existsSync(filePath)) {
-    res.download(filePath);
-  } else {
+// 📂 List Files from Cloudinary
+app.get('/files', authenticateRequest, async (req, res) => {
+  try {
+    const { resources } = await cloudinary.search.expression('folder:file-server').execute();
+    const files = resources.map((file) => ({
+      filename: file.public_id,
+      url: file.secure_url
+    }));
+    res.json({ files });
+  } catch (err) {
+    res.status(500).json({ error: 'Error listing files' });
+  }
+});
+
+// 📥 Download File from Cloudinary
+app.get('/download/:filename', authenticateRequest, async (req, res) => {
+  try {
+    const file = await cloudinary.api.resource(req.params.filename);
+    res.redirect(file.secure_url);
+  } catch (err) {
     res.status(404).json({ error: 'File not found' });
   }
 });
 
-// 🌍 Open File in Browser
-app.get('/open/:filename', authenticateRequest, (req, res) => {
-  const filePath = path.join(__dirname, 'uploads', req.params.filename);
-  if (fs.existsSync(filePath)) {
-    res.sendFile(filePath);
-  } else {
+// 🌍 Open File in Browser (Direct Cloudinary URL)
+app.get('/open/:filename', authenticateRequest, async (req, res) => {
+  try {
+    const file = await cloudinary.api.resource(req.params.filename);
+    res.send(`<h2>File Preview</h2><a href="${file.secure_url}" target="_blank">${file.secure_url}</a>`);
+  } catch (err) {
     res.status(404).json({ error: 'File not found' });
   }
 });
@@ -95,8 +107,8 @@ app.post('/auth/token', (req, res) => {
 
 // 🌍 Default Route for Homepage
 app.get('/', (req, res) => {
-  res.send('<h1>Welcome to the Secure File Server</h1><p>Use API endpoints to upload, list, download, and open files.</p>');
+  res.send('<h1>Welcome to the Cloud File Server</h1><p>Use API endpoints to upload, list, download, and open files.</p>');
 });
 
 // 🚀 Start Server
-app.listen(PORT, () => console.log(`✅ File Server running at http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`✅ Cloud File Server running at http://localhost:${PORT}`));
