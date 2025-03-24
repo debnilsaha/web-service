@@ -93,5 +93,10 @@ app.post('/auth/token', (req, res) => {
   });
 });
 
+// 🌍 Default Route for Homepage
+app.get('/', (req, res) => {
+  res.send('<h1>Welcome to the Secure File Server</h1><p>Use API endpoints to upload, list, download, and open files.</p>');
+});
+
 // 🚀 Start Server
 app.listen(PORT, () => console.log(`✅ File Server running at http://localhost:${PORT}`));
