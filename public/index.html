@@ -1,65 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cloud File Server</title>
-    <script>
-        async function uploadFile() {
-            const fileInput = document.getElementById('fileInput');
-            const file = fileInput.files[0];
-            if (!file) return alert('Select a file first!');
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const token = localStorage.getItem('token');
-            const response = await fetch('/upload', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData
-            });
-
-            const result = await response.json();
-            alert(result.message);
-            loadFiles();
-        }
-
-        async function loadFiles() {
-            const token = localStorage.getItem('token');
-            const response = await fetch('/files', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await response.json();
-            
-            const fileList = document.getElementById('fileList');
-            fileList.innerHTML = data.files.map(file =>
-                `<li><a href="${file.url}" target="_blank">${file.filename}</a></li>`).join('');
-        }
-
-        function login() {
-            const username = prompt('Username:');
-            const password = prompt('Password:');
-            
-            fetch('/auth/token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            })
-            .then(res => res.json())
-            .then(data => {
-                localStorage.setItem('token', data.token);
-                loadFiles();
-            })
-            .catch(() => alert('Login failed!'));
-        }
-    </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure File Server</title>
 </head>
 <body>
-    <h1>Cloud File Server</h1>
-    <button onclick="login()">Login</button>
-    <input type="file" id="fileInput">
-    <button onclick="uploadFile()">Upload File</button>
-    <ul id="fileList"></ul>
+  <h2>File Upload</h2>
+  <input type="file" id="fileInput">
+  <button onclick="uploadFile()">Upload</button>
+
+  <h2>Uploaded Files</h2>
+  <ul id="fileList"></ul>
+
+  <script>
+    async function uploadFile() {
+      const file = document.getElementById("fileInput").files[0];
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/upload", { method: "POST", body: formData });
+      const data = await response.json();
+      alert("File Uploaded: " + data.url);
+      fetchFiles();
+    }
+
+    async function fetchFiles() {
+      const response = await fetch("/files");
+      const files = await response.json();
+      document.getElementById("fileList").innerHTML = files.map(file => `
+        <li>
+          <a href="${file.url}" target="_blank">${file.name}</a>
+          <button onclick="deleteFile('${file.public_id}')">Delete</button>
+        </li>
+      `).join("");
+    }
+
+    async function deleteFile(id) {
+      await fetch(`/files/${id}`, { method: "DELETE" });
+      fetchFiles();
+    }
+
+    fetchFiles();
+  </script>
 </body>
 </html>
